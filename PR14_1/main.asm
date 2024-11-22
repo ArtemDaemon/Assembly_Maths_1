@@ -25,6 +25,7 @@ bytesReadY dd 0                                 ; Bytes read for Y
 inputLength dd 16                               ; Length of input buffer
 outputMessage db 'You entered X: ', 0           ; Output message for X
 outputMessageY db 'You entered Y: ', 0          ; Output message for Y
+errorMessage db 'Error: Non-numeric input detected.', 0
 newline db 13, 10, 0                            ; Newline characters
 
 .code
@@ -51,91 +52,49 @@ main PROC
     push edx                          ; Pointer to the prompt
     push ebx                          ; Handle to standard output
     call WriteConsoleA
-    test eax, eax                     ; Check if WriteConsoleA succeeded
-    jz error                          ; If eax is 0, jump to error
 
     ; === Read input X ===
     push 0
-    push OFFSET bytesReadX            ; Variable to store bytes read
-    push inputLength                  ; Length of the input buffer
-    lea edx, inputBufferX             ; Address of the input buffer
-    push edx                          ; Pointer to the input buffer
-    push esi                          ; Handle to standard input (preserved in ESI)
-    call ReadConsoleA
-    test eax, eax                     ; Check if ReadConsoleA succeeded
-    jz error                          ; If eax is 0, jump to error
-
-    ; === Display input X ===
-    push 0
     push OFFSET bytesReadX
-    push LENGTHOF outputMessage
-    lea edx, outputMessage
-    push edx
-    push ebx
-    call WriteConsoleA
-
-    push 0
-    push OFFSET bytesReadX
-    push bytesReadX
+    push inputLength
     lea edx, inputBufferX
     push edx
-    push ebx
-    call WriteConsoleA
+    push esi
+    call ReadConsoleA
 
-    push 0
-    push OFFSET bytesReadX
-    push LENGTHOF newline
-    lea edx, newline
-    push edx
-    push ebx
-    call WriteConsoleA
+    ; === Validate X ===
+    lea edx, inputBufferX             ; Load address of inputBufferX
+    mov ecx, bytesReadX               ; Load number of bytes read for X
+    dec ecx                           ; Exclude the newline character
+    call validateInput                ; Call validation subroutine
+    test eax, eax                     ; Check result (0 = invalid, 1 = valid)
+    jz error                          ; If invalid, jump to error
 
     ; === Prompt for Y ===
     push 0
-    push OFFSET bytesReadY            ; Variable to store bytes written
-    push LENGTHOF promptY             ; Length of the prompt
-    lea edx, promptY                  ; Address of the prompt
-    push edx                          ; Pointer to the prompt
-    push ebx                          ; Handle to standard output
+    push OFFSET bytesReadY
+    push LENGTHOF promptY
+    lea edx, promptY
+    push edx
+    push ebx
     call WriteConsoleA
-    test eax, eax                     ; Check if WriteConsoleA succeeded
-    jz error                          ; If eax is 0, jump to error
 
     ; === Read input Y ===
     push 0
-    push OFFSET bytesReadY            ; Variable to store bytes read
-    push inputLength                  ; Length of the input buffer
-    lea edx, inputBufferY             ; Address of the input buffer
-    push edx                          ; Pointer to the input buffer
-    push esi                          ; Handle to standard input (preserved in ESI)
-    call ReadConsoleA
-    test eax, eax                     ; Check if ReadConsoleA succeeded
-    jz error                          ; If eax is 0, jump to error
-
-    ; === Display input Y ===
-    push 0
     push OFFSET bytesReadY
-    push LENGTHOF outputMessageY
-    lea edx, outputMessageY
-    push edx
-    push ebx
-    call WriteConsoleA
-
-    push 0
-    push OFFSET bytesReadY
-    push bytesReadY
+    push inputLength
     lea edx, inputBufferY
     push edx
-    push ebx
-    call WriteConsoleA
+    push esi
+    call ReadConsoleA
 
-    push 0
-    push OFFSET bytesReadY
-    push LENGTHOF newline
-    lea edx, newline
-    push edx
-    push ebx
-    call WriteConsoleA
+    ; === Validate Y ===
+    lea edx, inputBufferY             ; Load address of inputBufferY
+    mov ecx, bytesReadY               ; Load number of bytes read for Y
+    dec ecx                           ; Exclude the newline character
+    call validateInput
+    test eax, eax                     ; Check result
+    jz error
 
     ; === Exit process successfully ===
     push 0
@@ -143,10 +102,9 @@ main PROC
 
 error:
     ; Print error message
-    lea edx, promptX                  ; Reuse promptX for simplicity
     push 0
-    push OFFSET bytesReadX
-    push LENGTHOF promptX
+    push LENGTHOF errorMessage
+    lea edx, errorMessage
     push edx
     push ebx
     call WriteConsoleA
@@ -154,5 +112,35 @@ error:
     push 1                            ; Exit with error code
     call ExitProcess
 main ENDP
+
+; === Validate Input Subroutine ===
+; Input:
+;   EDX - Address of the string
+;   ECX - Length of the string (including '\r')
+; Output:
+;   EAX - 1 if valid, 0 if invalid
+validateInput PROC
+    dec ecx                           ; Reduce count to exclude '\r'
+    cmp byte ptr [edx + ecx], 13      ; Check if last character is '\r'
+    je trimCarriageReturn
+continueValidation:
+    mov eax, 1                        ; Assume valid input
+validateLoop:
+    mov al, byte ptr [edx]            ; Load the current character
+    cmp al, '0'                       ; Check if >= '0'
+    jl invalid                        ; If less, invalid
+    cmp al, '9'                       ; Check if <= '9'
+    jg invalid                        ; If greater, invalid
+    inc edx                           ; Move to the next character
+    loop validateLoop                 ; Repeat for all characters
+    mov eax, 1                        ; Valid input
+    ret
+invalid:
+    mov eax, 0                        ; Invalid input
+    ret
+trimCarriageReturn:
+    mov byte ptr [edx + ecx], 0       ; Null-terminate string by replacing '\r'
+    jmp continueValidation
+validateInput ENDP
 
 END main
