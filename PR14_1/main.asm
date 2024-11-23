@@ -23,8 +23,8 @@ inputBufferY db 16 dup(0)                       ; Buffer for input Y
 bytesReadX dd 0                                 ; Bytes read for X
 bytesReadY dd 0                                 ; Bytes read for Y
 inputLength dd 16                               ; Length of input buffer
-outputMessage db 'You entered X: ', 0           ; Output message for X
-outputMessageY db 'You entered Y: ', 0          ; Output message for Y
+resultBuffer db 16 dup(0)                       ; Buffer for the result
+resultBytes dd 0                                ; Bytes written for result
 errorMessage db 'Error: Non-numeric input or Y is zero.', 0
 newline db 13, 10, 0                            ; Newline characters
 
@@ -46,11 +46,11 @@ main PROC
 
     ; === Prompt for X ===
     push 0
-    push OFFSET bytesReadX            ; Variable to store bytes written
-    push LENGTHOF promptX             ; Length of the prompt
-    lea edx, promptX                  ; Address of the prompt
-    push edx                          ; Pointer to the prompt
-    push edi                          ; Handle to standard output
+    push OFFSET bytesReadX
+    push LENGTHOF promptX
+    lea edx, promptX
+    push edx
+    push edi
     call WriteConsoleA
 
     ; === Read input X ===
@@ -69,6 +69,11 @@ main PROC
     call validateInput                ; Call validation subroutine
     test eax, eax                     ; Check result (0 = invalid, 1 = valid)
     jz error                          ; If invalid, jump to error
+
+    ; === Convert X to Integer ===
+    lea ecx, inputBufferX                ; Load address of inputBufferX into ECX
+    call stringToInt                     ; Call stringToInt
+    mov ebx, eax                         ; Move result to EBX (X value)
 
     ; === Prompt for Y ===
     push 0
@@ -96,11 +101,31 @@ main PROC
     test eax, eax                     ; Check result
     jz error
 
+    ; === Convert Y to Integer ===
+    lea ecx, inputBufferY                ; Load address of inputBufferY into ECX
+    call stringToInt                     ; Call stringToInt
+    mov ecx, eax                         ; Move result to ECX (Y value)
+
     ; === Check if Y is Non-Zero ===
-    lea edx, inputBufferY             ; Load address of inputBufferY
-    call stringToInt                  ; Convert inputBufferY to an integer
-    test eax, eax                     ; Check if the value is zero
+    test ecx, ecx                     ; Check if Y is zero
     jz error                          ; If zero, jump to error
+
+    ; === Add X and Y ===
+    add ebx, ecx                      ; EBX = X + Y
+
+    ; === Convert Result to String ===
+    mov eax, ebx                      ; Move result to EAX
+    lea edx, resultBuffer             ; Load address of result buffer
+    call intToString                  ; Convert EAX to string in resultBuffer
+
+    ; === Print Result ===
+    push 0
+    push OFFSET resultBytes
+    push LENGTHOF resultBuffer
+    lea edx, resultBuffer
+    push edx
+    push edi
+    call WriteConsoleA
 
     ; === Exit process successfully ===
     push 0
@@ -152,19 +177,54 @@ validateInput ENDP
 
 ; === Subroutine: Convert String to Integer ===
 stringToInt PROC
-    xor eax, eax                      ; Clear EAX (result)
-    xor ebx, ebx                      ; Clear EBX (temporary multiplier)
+    xor eax, eax                      ; Clear EAX (result accumulator)
+    xor edx, edx                      ; Use EDX as a temporary register
 convertLoop:
-    mov bl, byte ptr [edx]            ; Load character
-    cmp bl, 0                         ; Check for null terminator
-    je doneConversion                 ; If null terminator, finish
-    sub bl, '0'                       ; Convert ASCII to integer
-    imul eax, eax, 10                 ; Multiply current result by 10
-    add eax, ebx                      ; Add the new digit
-    inc edx                           ; Move to the next character
+    mov dl, byte ptr [ecx]            ; Load character from the string into DL
+    cmp dl, 0                         ; Check for null terminator
+    je doneConversion
+    sub dl, '0'                       ; Convert ASCII to numeric value
+    imul eax, eax, 10                 ; Multiply accumulated value by 10
+    add eax, edx                      ; Add the numeric value to the result
+    inc ecx                           ; Move to the next character
     jmp convertLoop
 doneConversion:
     ret
 stringToInt ENDP
+
+; === Subroutine: Convert Integer to String ===
+intToString PROC
+    push edi                          ; Save the value of EDI
+    xor ecx, ecx                      ; Clear ECX (character count)
+    mov edi, edx                      ; Save starting address of result buffer
+    test eax, eax                     ; Check if number is negative
+    jge positiveNumber                ; If positive, skip to conversion
+    mov byte ptr [edi], '-'           ; Add '-' sign to buffer
+    inc edi                           ; Move buffer pointer forward
+    neg eax                           ; Convert number to positive
+
+positiveNumber:
+    xor edx, edx                      ; Clear remainder (EDX)
+    mov ebx, 10                       ; Divisor for decimal conversion
+convertLoop:
+    div ebx                           ; Divide EAX by 10 (EAX = quotient, EDX = remainder)
+    add dl, '0'                       ; Convert remainder to ASCII
+    push edx                          ; Save ASCII character on the stack
+    inc ecx                           ; Increment character count
+    test eax, eax                     ; Check if quotient is 0
+    jnz convertLoop                   ; Continue if not 0
+
+    ; Pop characters back into buffer in reverse order
+writeChars:
+    pop edx                           ; Pop the top character
+    mov byte ptr [edi], dl            ; Write character to buffer
+    inc edi                           ; Move to next buffer position
+    loop writeChars                   ; Repeat for all characters
+
+    mov byte ptr [edi], 0             ; Null-terminate the string
+    pop edi                           ; Restore the original value of EDI
+    ret
+intToString ENDP
+
 
 END main
