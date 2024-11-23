@@ -17,7 +17,7 @@ STD_INPUT_HANDLE equ -10
 
 .data
 promptX db 'Enter a value for X: ', 0           ; Prompt for X
-promptY db 'Enter a value for Y: ', 0           ; Prompt for Y
+promptY db 'Enter a value for Y (non-zero): ', 0; Prompt for Y
 inputBufferX db 16 dup(0)                       ; Buffer for input X
 inputBufferY db 16 dup(0)                       ; Buffer for input Y
 bytesReadX dd 0                                 ; Bytes read for X
@@ -25,7 +25,7 @@ bytesReadY dd 0                                 ; Bytes read for Y
 inputLength dd 16                               ; Length of input buffer
 outputMessage db 'You entered X: ', 0           ; Output message for X
 outputMessageY db 'You entered Y: ', 0          ; Output message for Y
-errorMessage db 'Error: Non-numeric input detected.', 0
+errorMessage db 'Error: Non-numeric input or Y is zero.', 0
 newline db 13, 10, 0                            ; Newline characters
 
 .code
@@ -33,8 +33,8 @@ main PROC
     ; === Get standard output handle ===
     push STD_OUTPUT_HANDLE
     call GetStdHandle
-    mov ebx, eax                      ; Save handle in EBX (standard output)
-    test ebx, ebx                     ; Check if handle is valid
+    mov edi, eax                      ; Save handle in EDI (standard output)
+    test edi, edi                     ; Check if handle is valid
     jz error                          ; If handle is 0, jump to error
 
     ; === Get standard input handle ===
@@ -50,7 +50,7 @@ main PROC
     push LENGTHOF promptX             ; Length of the prompt
     lea edx, promptX                  ; Address of the prompt
     push edx                          ; Pointer to the prompt
-    push ebx                          ; Handle to standard output
+    push edi                          ; Handle to standard output
     call WriteConsoleA
 
     ; === Read input X ===
@@ -76,7 +76,7 @@ main PROC
     push LENGTHOF promptY
     lea edx, promptY
     push edx
-    push ebx
+    push edi
     call WriteConsoleA
 
     ; === Read input Y ===
@@ -96,6 +96,12 @@ main PROC
     test eax, eax                     ; Check result
     jz error
 
+    ; === Check if Y is Non-Zero ===
+    lea edx, inputBufferY             ; Load address of inputBufferY
+    call stringToInt                  ; Convert inputBufferY to an integer
+    test eax, eax                     ; Check if the value is zero
+    jz error                          ; If zero, jump to error
+
     ; === Exit process successfully ===
     push 0
     call ExitProcess
@@ -106,17 +112,18 @@ error:
     push LENGTHOF errorMessage
     lea edx, errorMessage
     push edx
-    push ebx
+    push edi                          ; Use EDI (output handle)
     call WriteConsoleA
 
     push 1                            ; Exit with error code
     call ExitProcess
 main ENDP
 
-; === Validate Input Subroutine ===
+; === Subroutine: Validate Input ===
+; Checks if a string contains only numeric characters.
 ; Input:
 ;   EDX - Address of the string
-;   ECX - Length of the string (including '\r')
+;   ECX - Length of the string (excluding newline)
 ; Output:
 ;   EAX - 1 if valid, 0 if invalid
 validateInput PROC
@@ -142,5 +149,22 @@ trimCarriageReturn:
     mov byte ptr [edx + ecx], 0       ; Null-terminate string by replacing '\r'
     jmp continueValidation
 validateInput ENDP
+
+; === Subroutine: Convert String to Integer ===
+stringToInt PROC
+    xor eax, eax                      ; Clear EAX (result)
+    xor ebx, ebx                      ; Clear EBX (temporary multiplier)
+convertLoop:
+    mov bl, byte ptr [edx]            ; Load character
+    cmp bl, 0                         ; Check for null terminator
+    je doneConversion                 ; If null terminator, finish
+    sub bl, '0'                       ; Convert ASCII to integer
+    imul eax, eax, 10                 ; Multiply current result by 10
+    add eax, ebx                      ; Add the new digit
+    inc edx                           ; Move to the next character
+    jmp convertLoop
+doneConversion:
+    ret
+stringToInt ENDP
 
 END main
