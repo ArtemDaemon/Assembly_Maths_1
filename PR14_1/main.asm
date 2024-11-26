@@ -29,6 +29,8 @@ errorMessage db 'Error: Non-numeric input or Y is zero.', 0
 newline db 13, 10, 0                            ; Newline characters
 integer dd 0
 fraction dd 0                 ; Результат деления в формате целой части + десятичная часть
+debugBuffer db 16 dup(0)              ; Буфер для строки (максимум 16 символов)
+bytesWritten dd 0                     ; Для записи длины вывода
 
 .code
 main PROC
@@ -130,10 +132,14 @@ main PROC
     call divideWithFraction
 
     ; === Convert Result to String ===
-    lea edx, resultBuffer             ; Load result buffer address
+    push edi
+    mov eax, integer
+    mov edx, fraction
+    lea edi, resultBuffer             ; Load result buffer address
     call intToString                  ; Convert EAX to string in resultBuffer
 
     ; === Print Result ===
+    pop edi
     push 0
     push OFFSET resultBytes
     push LENGTHOF resultBuffer
@@ -207,40 +213,81 @@ doneConversion:
     ret
 stringToInt ENDP
 
-; === Subroutine: Convert Integer to String ===
+; === Subroutine: Convert Integer to String with Decimal Point ===
 intToString PROC
-    push edi                          ; Save the value of EDI
-    xor ecx, ecx                      ; Clear ECX (character count)
-    mov edi, edx                      ; Save starting address of result buffer
-    test eax, eax                     ; Check if number is negative
-    jge positiveNumber                ; If positive, skip to conversion
-    mov byte ptr [edi], '-'           ; Add '-' sign to buffer
-    inc edi                           ; Move buffer pointer forward
-    neg eax                           ; Convert number to positive
+    push edi                          ; Сохранить регистры
+    push eax
+    push ebx
+    push ecx
+    push edx                          ; Сохранить дробную часть
+
+    xor ecx, ecx                      ; Счётчик символов
+
+    ; === Обработка целой части числа ===
+    test eax, eax                     ; Проверить, отрицательное ли число
+    jge positiveNumber                ; Если положительное, перейти к обработке
+    mov byte ptr [edi], '-'           ; Добавить знак "-"
+    inc edi                           ; Сдвинуть указатель буфера
+    neg eax                           ; Сделать число положительным
 
 positiveNumber:
-    xor edx, edx                      ; Clear EDX (important to prevent overflow)
-    mov ebx, 10                       ; Divisor for decimal conversion
-convertLoop:
-    xor edx, edx                      ; Clear remainder before each DIV (important!)
-    div ebx                           ; Divide EAX by 10 (EAX = quotient, EDX = remainder)
-    add dl, '0'                       ; Convert remainder to ASCII
-    push edx                          ; Save ASCII character on the stack
-    inc ecx                           ; Increment character count
-    test eax, eax                     ; Check if quotient is 0
-    jnz convertLoop                   ; Continue if not 0
+    xor edx, edx                      ; Очистить остаток
+    mov ebx, 10                       ; Делитель для десятичной системы
+convertIntegerLoop:
+    div ebx                           ; Деление EAX на 10 (EAX = частное, EDX = остаток)
+    add dl, '0'                       ; Преобразовать остаток в ASCII
+    push edx                          ; Сохранить ASCII-символ в стеке
+    inc ecx                           ; Увеличить счётчик символов
+    test eax, eax                     ; Проверить, деление завершено
+    jnz convertIntegerLoop            ; Продолжать, если частное не 0
 
-    ; Pop characters back into buffer in reverse order
-writeChars:
-    pop edx                           ; Pop the top character
-    mov byte ptr [edi], dl            ; Write character to buffer
-    inc edi                           ; Move to next buffer position
-    loop writeChars                   ; Repeat for all characters
+    ; Запись целой части в буфер
+writeIntegerChars:
+    pop edx                           ; Извлечь символ из стека
+    mov byte ptr [edi], dl            ; Записать символ в буфер
+    inc edi                           ; Сдвинуть указатель
+    loop writeIntegerChars            ; Повторить для всех символов
 
-    mov byte ptr [edi], 0             ; Null-terminate the string
-    pop edi                           ; Restore the original value of EDI
+    ; === Обработка дробной части числа ===
+    pop eax                           ; Восстановить дробную часть из стека
+    test eax, eax
+    jz endFraction
+
+    ; === Добавить десятичную точку ===
+    mov byte ptr [edi], '.'           ; Добавить символ "."
+    inc edi                           ; Сдвинуть указатель
+
+    xor edx, edx                      ; Очистить старшую часть
+    mov ebx, 10                       ; Делитель для десятичной системы
+convertFractionLoop:
+    xor edx, edx
+    div ebx                           ; Деление EAX на 10 (EAX = частное, EDX = остаток)
+    add dl, '0'                       ; Преобразовать остаток в ASCII
+    push edx                          ; Сохранить ASCII-символ в стеке
+    inc ecx                           ; Увеличить счётчик символов
+    test eax, eax                     ; Проверить, деление завершено
+    jnz convertFractionLoop            ; Продолжать, если частное не 0
+
+; Запись дробной части в буфер
+writeFractionChars:
+    pop edx                           ; Извлечь символ из стека
+    mov byte ptr [edi], dl            ; Записать символ в буфер
+    inc edi                           ; Сдвинуть указатель
+    loop writeFractionChars            ; Повторить для всех символов
+
+endFraction:
+    ; === Завершение строки ===
+    mov byte ptr [edi], 0             ; Добавить null-терминатор
+
+    ; === Восстановить регистры ===
+    pop ecx
+    pop ebx
+    pop eax
+    pop edi
+
     ret
 intToString ENDP
+
 
 divideWithFraction PROC
     ; Вход:
