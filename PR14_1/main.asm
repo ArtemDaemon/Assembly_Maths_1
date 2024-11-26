@@ -268,7 +268,7 @@ divideWithFraction PROC
     jz endDivide                ; Если остатка нет, завершить
 
     ; Обработка остатка
-    mov ecx, 10                 ; Количество знаков после запятой
+    mov ecx, 10                 ; Максимальное количество знаков после запятой
     xor eax, eax                ; Очистить EAX
     mov [fraction], eax         ; Инициализировать десятичную часть
 fractionLoop:
@@ -276,15 +276,21 @@ fractionLoop:
     imul eax, 10                ; Умножить остаток на 10
     xor edx, edx                ; Очистить регистр остатка
     div ebx                     ; Выполнить деление (EAX / EBX)
+
     ; Добавить текущий разряд в десятичную часть
     mov esi, [fraction]         ; Текущая десятичная часть
     imul esi, 10                ; Увеличить разрядность
     add esi, eax                ; Добавить новый разряд
     mov [fraction], esi         ; Сохранить десятичную часть
 
+    ; Проверить новый остаток
+    test edx, edx               ; Если остаток стал нулевым
+    jz endFraction              ; Прекратить обработку
+
     mov esi, edx                ; Новый остаток
     loop fractionLoop           ; Повторить цикл
 
+endFraction:
 endDivide:
     pop esi                     ; Восстановить регистры
     pop edx
