@@ -112,13 +112,17 @@ main PROC
     ; edi - OutputHandle
     ; eax - where to put result
 
-    ; X+Y
+    ; X + Y
     mov edx, ebx
     add edx, ecx
 
-    ; Y*Y
-    mov eax, ecx
-    imul eax, ecx
+    ; Y * Y
+    imul ecx, ecx
+
+    ; (X + Y) / Y^2
+    mov eax, edx
+    xor edx, edx
+    div ecx
 
     ; === Convert Result to String ===
     lea edx, resultBuffer             ; Load result buffer address
