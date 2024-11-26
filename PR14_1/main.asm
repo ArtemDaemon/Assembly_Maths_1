@@ -210,9 +210,10 @@ intToString PROC
     neg eax                           ; Convert number to positive
 
 positiveNumber:
-    xor edx, edx                      ; Clear remainder (EDX)
+    xor edx, edx                      ; Clear EDX (important to prevent overflow)
     mov ebx, 10                       ; Divisor for decimal conversion
 convertLoop:
+    xor edx, edx                      ; Clear remainder before each DIV (important!)
     div ebx                           ; Divide EAX by 10 (EAX = quotient, EDX = remainder)
     add dl, '0'                       ; Convert remainder to ASCII
     push edx                          ; Save ASCII character on the stack
