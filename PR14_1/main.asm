@@ -124,9 +124,6 @@ main PROC
     imul ecx, ecx
 
     ; (X + Y) / Y^2
-    ; mov eax, edx
-    ; xor edx, edx
-    ; div ecx
     mov eax, edx
     mov ebx, ecx
     call divideWithFraction
