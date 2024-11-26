@@ -120,7 +120,7 @@ main PROC
     mov edx, ebx
     add edx, ecx
 
-    ; Y * Y
+    ; Y^2
     imul ecx, ecx
 
     ; (X + Y) / Y^2
