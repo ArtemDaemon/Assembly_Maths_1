@@ -27,6 +27,8 @@ resultBuffer db 16 dup(0)                       ; Buffer for the result
 resultBytes dd 0                                ; Bytes written for result
 errorMessage db 'Error: Non-numeric input or Y is zero.', 0
 newline db 13, 10, 0                            ; Newline characters
+integer dd 0
+fraction dd 0                 ; Результат деления в формате целой части + десятичная часть
 
 .code
 main PROC
@@ -120,9 +122,12 @@ main PROC
     imul ecx, ecx
 
     ; (X + Y) / Y^2
+    ; mov eax, edx
+    ; xor edx, edx
+    ; div ecx
     mov eax, edx
-    xor edx, edx
-    div ecx
+    mov ebx, ecx
+    call divideWithFraction
 
     ; === Convert Result to String ===
     lea edx, resultBuffer             ; Load result buffer address
@@ -237,5 +242,56 @@ writeChars:
     ret
 intToString ENDP
 
+divideWithFraction PROC
+    ; Вход:
+    ;   EAX - делимое
+    ;   EBX - делитель
+    ; Выход:
+    ;   Целая часть в [result]
+    ;   Десятичная часть в [fraction]
+
+    push eax                    ; Сохранить регистры
+    push ebx
+    push ecx
+    push edx
+    push esi
+
+    ; Выполнить целочисленное деление
+    xor edx, edx                ; Очистить остаток (EDX)
+    div ebx                     ; Деление EAX / EBX (целая часть в EAX, остаток в EDX)
+
+    mov [integer], eax           ; Сохранить целую часть
+    mov esi, edx                ; Сохранить остаток
+
+    ; Проверить, есть ли остаток
+    test esi, esi               ; Проверить остаток
+    jz endDivide                ; Если остатка нет, завершить
+
+    ; Обработка остатка
+    mov ecx, 10                 ; Количество знаков после запятой
+    xor eax, eax                ; Очистить EAX
+    mov [fraction], eax         ; Инициализировать десятичную часть
+fractionLoop:
+    mov eax, esi                ; Перенести остаток в EAX
+    imul eax, 10                ; Умножить остаток на 10
+    xor edx, edx                ; Очистить регистр остатка
+    div ebx                     ; Выполнить деление (EAX / EBX)
+    ; Добавить текущий разряд в десятичную часть
+    mov esi, [fraction]         ; Текущая десятичная часть
+    imul esi, 10                ; Увеличить разрядность
+    add esi, eax                ; Добавить новый разряд
+    mov [fraction], esi         ; Сохранить десятичную часть
+
+    mov esi, edx                ; Новый остаток
+    loop fractionLoop           ; Повторить цикл
+
+endDivide:
+    pop esi                     ; Восстановить регистры
+    pop edx
+    pop ecx
+    pop ebx
+    pop eax
+    ret
+divideWithFraction ENDP
 
 END main
