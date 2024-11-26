@@ -62,15 +62,13 @@ main PROC
     push esi
     call ReadConsoleA
 
-    ; === Validate X ===
+    ; === Validate and Convert X ===
     lea edx, inputBufferX             ; Load address of inputBufferX
     mov ecx, bytesReadX               ; Load number of bytes read for X
     dec ecx                           ; Exclude the newline character
     call validateInput                ; Call validation subroutine
     test eax, eax                     ; Check result (0 = invalid, 1 = valid)
     jz error                          ; If invalid, jump to error
-
-    ; === Convert X to Integer ===
     lea ecx, inputBufferX                ; Load address of inputBufferX into ECX
     call stringToInt                     ; Call stringToInt
     mov ebx, eax                         ; Move result to EBX (X value)
@@ -93,15 +91,13 @@ main PROC
     push esi
     call ReadConsoleA
 
-    ; === Validate Y ===
+    ; === Validate and Convert Y ===
     lea edx, inputBufferY             ; Load address of inputBufferY
     mov ecx, bytesReadY               ; Load number of bytes read for Y
     dec ecx                           ; Exclude the newline character
     call validateInput
     test eax, eax                     ; Check result
     jz error
-
-    ; === Convert Y to Integer ===
     lea ecx, inputBufferY                ; Load address of inputBufferY into ECX
     call stringToInt                     ; Call stringToInt
     mov ecx, eax                         ; Move result to ECX (Y value)
@@ -110,12 +106,22 @@ main PROC
     test ecx, ecx                     ; Check if Y is zero
     jz error                          ; If zero, jump to error
 
-    ; === Add X and Y ===
-    add ebx, ecx                      ; EBX = X + Y
+    ; === Compute Formula ===
+    ; ebx - value of X
+    ; ecx - value of Y
+    ; edi - OutputHandle
+    ; eax - where to put result
+
+    ; X+Y
+    mov edx, ebx
+    add edx, ecx
+
+    ; Y*Y
+    mov eax, ecx
+    imul eax, ecx
 
     ; === Convert Result to String ===
-    mov eax, ebx                      ; Move result to EAX
-    lea edx, resultBuffer             ; Load address of result buffer
+    lea edx, resultBuffer             ; Load result buffer address
     call intToString                  ; Convert EAX to string in resultBuffer
 
     ; === Print Result ===
