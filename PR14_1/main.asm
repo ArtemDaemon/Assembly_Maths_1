@@ -31,6 +31,8 @@ integer dd 0
 fraction dd 0                 ; Результат деления в формате целой части + десятичная часть
 debugBuffer db 16 dup(0)              ; Буфер для строки (максимум 16 символов)
 bytesWritten dd 0                     ; Для записи длины вывода
+xValue dd 0
+yValue dd 0
 
 .code
 main PROC
@@ -111,27 +113,39 @@ main PROC
     jz error                          ; If zero, jump to error
 
     ; === Compute Formula ===
-    ; ebx - value of X
-    ; ecx - value of Y
-    ; edi - OutputHandle
-    ; eax - where to put result
+    ; EBX - value of X
+    ; ECX - value of Y
+    ; EDI - OutputHandle
+    ; EAX - where to put result
 
-    ; X + Y
+    mov xValue, ecx
+    mov yValue, ebx
+
+    ; EDX = X + Y
     mov edx, ebx
     add edx, ecx
 
-    ; Y^2
+    ; ECX = Y^2
     imul ecx, ecx
 
-    ; (X + Y) / Y^2
+    ; integer.fraction = (X + Y) / Y^2
     mov eax, edx
     mov ebx, ecx
     call divideWithFraction
 
+    ; integer.fraction = (X + Y) / Y^2 - 1
+    mov eax, integer
+    mov ebx, fraction
+    mov ecx, 1
+    mov edx, 0
+    call subtractNumbers
+    mov integer, eax
+    mov fraction, ebx
+
     ; === Convert Result to String ===
     push edi
-    mov eax, integer
-    mov edx, fraction
+    ; mov eax, integer
+    mov edx, ebx
     lea edi, resultBuffer             ; Load result buffer address
     call intToString                  ; Convert EAX to string in resultBuffer
 
@@ -212,6 +226,11 @@ stringToInt ENDP
 
 ; === Subroutine: Convert Integer to String with Decimal Point ===
 intToString PROC
+    ; Вход:
+    ;   EAX = Целая часть
+    ;   EBX = Дробная часть
+    ;   ESI = Флаг отрицательного числа (0/1)
+
     push edi                          ; Сохранить регистры
     push eax
     push ebx
@@ -221,11 +240,10 @@ intToString PROC
     xor ecx, ecx                      ; Счётчик символов
 
     ; === Обработка целой части числа ===
-    test eax, eax                     ; Проверить, отрицательное ли число
-    jge positiveNumber                ; Если положительное, перейти к обработке
+    test esi, esi                  ; Проверить, отрицательное ли число
+    jz positiveNumber                ; Если положительное, перейти к обработке
     mov byte ptr [edi], '-'           ; Добавить знак "-"
     inc edi                           ; Сдвинуть указатель буфера
-    neg eax                           ; Сделать число положительным
 
 positiveNumber:
     xor edx, edx                      ; Очистить остаток
@@ -285,7 +303,6 @@ endFraction:
     ret
 intToString ENDP
 
-
 divideWithFraction PROC
     ; Вход:
     ;   EAX - делимое
@@ -343,5 +360,96 @@ endDivide:
     pop eax
     ret
 divideWithFraction ENDP
+
+subtractNumbers PROC
+    ; Процедура для вычитания одного дробного числа из другого
+    ; Вход:
+    ;   EAX = целая часть первого числа
+    ;   EBX = дробная часть первого числа
+    ;   ECX = целая часть второго числа
+    ;   EDX = дробная часть второго числа
+    ; Выход:
+    ;   EAX = результат целой части
+    ;   EBX = результат дробной части
+    ;   ESI = флаг отрицательного результата (0/1)
+
+    cmp eax, ecx
+    ja skipSwap
+    jb doSwap
+
+    cmp ebx, edx
+    ja skipSwap
+
+doSwap:
+    xchg eax, ecx
+    xchg ebx, edx
+    mov esi, 1
+    jmp checkFractionPart
+
+skipSwap:
+    xor esi, esi
+
+checkFractionPart:
+    cmp ebx, edx
+    ja noBorrow
+
+    dec eax
+
+    push eax
+    push ecx
+    push edx
+    push ebx
+
+    mov eax, edx
+    call getBorrowAdd
+    
+    pop ebx
+    pop edx
+    pop ecx
+    add ebx, eax
+    pop eax
+    
+noBorrow:
+    sub eax, ecx
+    sub ebx, edx
+    ret
+
+subtractNumbers ENDP
+
+getBorrowAdd PROC
+    ; Процедура для получения числа, которое прибавится к меньшей части при вычитании
+    ; Например, если из 0 вычитается 17, то к 0 прибавляется 100 (10 ^ (число символов в 17))
+    ; Вход:
+    ;   EAX = Число X, символы которого нужно посчитать
+    ; Выход:
+    ;   EAX = 10 ^ (число символов в X)
+    ; Используется:
+    ;   ECX = Счетчик
+    ;   EDX = Хранение остатка деления
+    ;   EBX = Хранение делителя
+    xor ecx, ecx
+countDigits:
+    cmp eax, 0             ; Проверяем, не равно ли X нулю
+    je computePower        ; Если равно, переходим к вычислению Y
+    inc ecx                ; Увеличиваем счетчик цифр
+    cdq                    ; Очищаем EDX
+    mov ebx, 10            ; Делитель = 10
+    div ebx                ; EAX = EAX / 10 (деление нацело)
+    jmp countDigits        ; Повторяем цикл
+
+computePower:
+    mov eax, 1             ; Начальное значение для Y = 10^0 = 1
+    mov ebx, 10            ; Основание степени = 10
+
+powerLoop:
+    cmp ecx, 0             ; Проверяем, сколько еще итераций
+    je done         ; Если 0, завершаем
+    imul eax, ebx          ; Умножаем результат на 10
+    dec ecx                ; Уменьшаем счетчик итераций
+    jmp powerLoop          ; Повторяем
+
+done:
+    ret
+getBorrowAdd ENDP
 
 END main
