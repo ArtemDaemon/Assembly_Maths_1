@@ -2,10 +2,7 @@
 .model flat, stdcall
 .stack 4096
 
-; Include required libraries
-includelib kernel32.lib
-
-; Declare external Windows API functions
+; Объявление внешних функций Windows API
 GetStdHandle proto stdcall :dword
 WriteConsoleA proto stdcall :dword, :ptr, :dword, :ptr, :dword
 ReadConsoleA proto stdcall :dword, :ptr, :dword, :ptr, :dword
@@ -16,41 +13,40 @@ STD_OUTPUT_HANDLE equ -11
 STD_INPUT_HANDLE equ -10
 
 .data
-promptX db 'Enter a value for X: ', 0           ; Prompt for X
-promptY db 'Enter a value for Y (non-zero): ', 0; Prompt for Y
-inputBufferX db 16 dup(0)                       ; Buffer for input X
-inputBufferY db 16 dup(0)                       ; Buffer for input Y
-bytesReadX dd 0                                 ; Bytes read for X
-bytesReadY dd 0                                 ; Bytes read for Y
-inputLength dd 16                               ; Length of input buffer
-resultBuffer db 16 dup(0)                       ; Buffer for the result
-resultBytes dd 0                                ; Bytes written for result
-errorMessage db 'Error: Non-numeric input or Y is zero.', 0
-newline db 13, 10, 0                            ; Newline characters
-integer dd 0
-fraction dd 0                 ; Результат деления в формате целой части + десятичная часть
-debugBuffer db 16 dup(0)              ; Буфер для строки (максимум 16 символов)
-bytesWritten dd 0                     ; Для записи длины вывода
-xValue dd 0
-yValue dd 0
+promptX db 'Enter a value for X: ', 0                       ; Сообщение для ввода X
+promptY db 'Enter a value for Y (non-zero): ', 0            ; Сообщение для ввода Y
+inputBufferX db 16 dup(0)                                   ; Буфер для значения X
+inputBufferY db 16 dup(0)                                   ; Буфер для значения Y
+bytesReadX dd 0                                             ; Кол-во прочитанных байт X
+bytesReadY dd 0                                             ; Кол-во прочитанных байт Y
+inputLength dd 16                                           ; Длина буфера входа
+resultBuffer db 16 dup(0)                                   ; Буфер для вывода результата
+resultBytes dd 0                                            ; Кол-во байт, записанных в буфер результата
+errorMessage db 'Error: Non-numeric input or Y is zero.', 0 ; Сообщение об ошибке
+integer dd 0                                                ; Целая часть результата
+fraction dd 0                                               ; Дробнаячасть результата
+xValue dd 0                                                 ; Хранимое значение X
+yValue dd 0                                                 ; Хранимое значение Y
+resultMessage db 'The result of the (X+Y)/Y^2 - 1: ', 0       ; Сообщение о результате
+bytesResultMessage dd 0                                     ; Кол-во прочитанных байт в сообщении о результате
 
 .code
 main PROC
-    ; === Get standard output handle ===
+    ; === Получаем OutputHandle ===
     push STD_OUTPUT_HANDLE
     call GetStdHandle
-    mov edi, eax                      ; Save handle in EDI (standard output)
-    test edi, edi                     ; Check if handle is valid
-    jz error                          ; If handle is 0, jump to error
+    mov edi, eax                      ; Сохраняем Handle в EDI (стандартный вывод)
+    test edi, edi                     ; Проверяем, корректный ли Handle
+    jz error                          ; Если Handle = 0, переходим к error
 
-    ; === Get standard input handle ===
+    ; === Получаем InputHandle ===
     push STD_INPUT_HANDLE
     call GetStdHandle
-    mov esi, eax                      ; Save handle in ESI (standard input)
-    test esi, esi                     ; Check if handle is valid
-    jz error                          ; If handle is 0, jump to error
+    mov esi, eax                      ; Сохраняем Handle в ESI (стандартный ввод)
+    test esi, esi                     ; Проверяем, корректный ли Handle
+    jz error                          ; Если Handle = 0, переходим к error
 
-    ; === Prompt for X ===
+    ; === Вывод сообщения для X ===
     push 0
     push OFFSET bytesReadX
     push LENGTHOF promptX
@@ -59,7 +55,7 @@ main PROC
     push edi
     call WriteConsoleA
 
-    ; === Read input X ===
+    ; === Ввод значения X ===
     push 0
     push OFFSET bytesReadX
     push inputLength
@@ -68,18 +64,19 @@ main PROC
     push esi
     call ReadConsoleA
 
-    ; === Validate and Convert X ===
-    lea edx, inputBufferX             ; Load address of inputBufferX
-    mov ecx, bytesReadX               ; Load number of bytes read for X
-    dec ecx                           ; Exclude the newline character
-    call validateInput                ; Call validation subroutine
-    test eax, eax                     ; Check result (0 = invalid, 1 = valid)
-    jz error                          ; If invalid, jump to error
-    lea ecx, inputBufferX                ; Load address of inputBufferX into ECX
-    call stringToInt                     ; Call stringToInt
-    mov ebx, eax                         ; Move result to EBX (X value)
+    ; === Проверяем, что X число ===
+    lea edx, inputBufferX           ; Привязываем адрес буфера для значения X
+    mov ecx, bytesReadX             ; Передаем число байт, прочитанных в X
+    call validateInput              ; Вызываем процедуру проверки значения
+    test eax, eax                   ; Проверяем результат (0 = ошибка, 1 = корректно)
+    jz error                        ; Если ошибка, переходим к error
 
-    ; === Prompt for Y ===
+    ; === Конвертируем X в число ===
+    lea ecx, inputBufferX           ; Привязываем адрес буфера для значения X
+    call stringToInt                ; Вызываем процедуру конвертации значения
+    mov xValue, eax                 ; Сохраняем значение X
+
+    ; === Вывод сообщения для Y ===
     push 0
     push OFFSET bytesReadY
     push LENGTHOF promptY
@@ -88,7 +85,7 @@ main PROC
     push edi
     call WriteConsoleA
 
-    ; === Read input Y ===
+    ; === Ввод значения Y ===
     push 0
     push OFFSET bytesReadY
     push inputLength
@@ -97,60 +94,69 @@ main PROC
     push esi
     call ReadConsoleA
 
-    ; === Validate and Convert Y ===
-    lea edx, inputBufferY             ; Load address of inputBufferY
-    mov ecx, bytesReadY               ; Load number of bytes read for Y
-    dec ecx                           ; Exclude the newline character
-    call validateInput
-    test eax, eax                     ; Check result
-    jz error
-    lea ecx, inputBufferY                ; Load address of inputBufferY into ECX
-    call stringToInt                     ; Call stringToInt
-    mov ecx, eax                         ; Move result to ECX (Y value)
+    ; === Проверяем, что X число ===
+    lea edx, inputBufferY           ; Привязываем адрес буфера для значения Y
+    mov ecx, bytesReadY             ; Передаем число байт, прочитанных в Y
+    call validateInput              ; Вызываем процедуру проверки значения
+    test eax, eax                   ; Проверяем результат (0 = ошибка, 1 = корректно)
+    jz error                        ; Если ошибка, переходим к error
 
-    ; === Check if Y is Non-Zero ===
-    test ecx, ecx                     ; Check if Y is zero
-    jz error                          ; If zero, jump to error
+    ; === Конвертируем Y в число ===
+    lea ecx, inputBufferY               ; Привязываем адрес буфера для значения Y
+    call stringToInt                    ; Вызываем процедуру конвертации значения
+    mov yValue, eax                     ; Сохраняем значение Y
 
-    ; === Compute Formula ===
-    ; EBX - value of X
-    ; ECX - value of Y
+    ; === Проверяем, что Y != 0 ===
+    test eax, eax                   ; Проверяем, равен ли Y нулю
+    jz error                        ; Если Y==0, переходим к error
+
+    ; === Вычисление ===
+    ; xValue - значение X
+    ; yValue - значение Y
     ; EDI - OutputHandle
-    ; EAX - where to put result
 
-    mov xValue, ecx
-    mov yValue, ebx
+    ; EAX = X + Y
+    mov eax, xValue
+    add eax, yValue
 
-    ; EDX = X + Y
-    mov edx, ebx
-    add edx, ecx
-
-    ; ECX = Y^2
-    imul ecx, ecx
+    ; EBX = Y^2
+    mov ebx, yValue
+    imul ebx, ebx
 
     ; integer.fraction = (X + Y) / Y^2
-    mov eax, edx
-    mov ebx, ecx
-    call divideWithFraction
+    push edi
+    call divideIntNumbers
+    mov integer, edi
+    mov fraction, esi
+    pop edi
 
     ; integer.fraction = (X + Y) / Y^2 - 1
     mov eax, integer
     mov ebx, fraction
     mov ecx, 1
     mov edx, 0
-    call subtractNumbers
+    call subtractFloatNumbers
     mov integer, eax
     mov fraction, ebx
 
-    ; === Convert Result to String ===
+    ; === Конвертация результата в строку ===
     push edi
-    ; mov eax, integer
-    mov edx, ebx
-    lea edi, resultBuffer             ; Load result buffer address
-    call intToString                  ; Convert EAX to string in resultBuffer
-
-    ; === Print Result ===
+    mov eax, integer
+    mov ebx, fraction
+    lea edi, resultBuffer               ; Привязываем буфер для результата
+    call floatToString                  ; Вызываем процедуру для конвертации результата в строку
     pop edi
+
+    ; === Вывод выражения ===
+    push 0
+    push OFFSET bytesResultMessage
+    push LENGTHOF resultMessage
+    lea edx, resultMessage
+    push edx
+    push edi
+    call WriteConsoleA
+
+    ; === Вывод результата ===
     push 0
     push OFFSET resultBytes
     push LENGTHOF resultBuffer
@@ -159,91 +165,98 @@ main PROC
     push edi
     call WriteConsoleA
 
-    ; === Exit process successfully ===
+    ; === Успешное завершение программы ===
     push 0
     call ExitProcess
 
 error:
-    ; Print error message
+    ; Вывод сообщения об ошибке
     push 0
     push LENGTHOF errorMessage
     lea edx, errorMessage
     push edx
-    push edi                          ; Use EDI (output handle)
+    push edi                         
     call WriteConsoleA
 
-    push 1                            ; Exit with error code
+    push 1
     call ExitProcess
 main ENDP
 
-; === Subroutine: Validate Input ===
-; Checks if a string contains only numeric characters.
-; Input:
-;   EDX - Address of the string
-;   ECX - Length of the string (excluding newline)
-; Output:
-;   EAX - 1 if valid, 0 if invalid
 validateInput PROC
-    dec ecx                           ; Reduce count to exclude '\r'
-    cmp byte ptr [edx + ecx], 13      ; Check if last character is '\r'
+    ; === Проверка значения ===
+    ; Вход:
+    ;   EDX - Адрес буфера со строкой
+    ;   ECX - Длина строки
+    ; Output:
+    ;   EAX - 1 если строка корректна, 0 - если нет
+
+    dec ecx                           ; Уменьшаем счетчик, прочитанных байт, чтобы исключить '\n'
+    dec ecx                           ; Уменьшаем счетчик, прочитанных байт, чтобы исключить '\r'
+    cmp byte ptr [edx + ecx], 13      ; Проверяем, если последний символ '\r'
     je trimCarriageReturn
 continueValidation:
-    mov eax, 1                        ; Assume valid input
+    mov eax, 1                        ; Предположим, что ввод действителен
 validateLoop:
-    mov al, byte ptr [edx]            ; Load the current character
-    cmp al, '0'                       ; Check if >= '0'
-    jl invalid                        ; If less, invalid
-    cmp al, '9'                       ; Check if <= '9'
-    jg invalid                        ; If greater, invalid
-    inc edx                           ; Move to the next character
-    loop validateLoop                 ; Repeat for all characters
-    mov eax, 1                        ; Valid input
+    mov al, byte ptr [edx]            ; Получим текущий символ
+    cmp al, '0'                       ; Проверяем, если >= '0'
+    jl invalid                        ; Если меньше, некорректно
+    cmp al, '9'                       ; Проверяем, если <= '9'
+    jg invalid                        ; Если больше, некорректно
+    inc edx                           ; Переходим к следующему символу
+    loop validateLoop                 ; Цикл по всем символам
+    mov eax, 1                        ; Ввод корректный
     ret
 invalid:
-    mov eax, 0                        ; Invalid input
+    mov eax, 0                        ; Ввод некорректный
     ret
 trimCarriageReturn:
-    mov byte ptr [edx + ecx], 0       ; Null-terminate string by replacing '\r'
+    mov byte ptr [edx + ecx], 0
     jmp continueValidation
 validateInput ENDP
 
-; === Subroutine: Convert String to Integer ===
 stringToInt PROC
-    xor eax, eax                      ; Clear EAX (result accumulator)
-    xor edx, edx                      ; Use EDX as a temporary register
+    ; === Конвертация строки в число ===
+    ; Вход:
+    ;   ECX - адрес буфера со строкой
+    ; Выход:
+    ;   EAX - число
+    ; Используется:
+    ;   EDX - хранение остатка от деления
+    xor eax, eax                      ; Очищаем EAX
+    xor edx, edx                      ; Очищаем EDX
 convertLoop:
-    mov dl, byte ptr [ecx]            ; Load character from the string into DL
-    cmp dl, 0                         ; Check for null terminator
+    mov dl, byte ptr [ecx]            ; Сохраняем символ из строки в DL
+    cmp dl, 0                         ; Проверияем на null-terminator
     je doneConversion
-    sub dl, '0'                       ; Convert ASCII to numeric value
-    imul eax, eax, 10                 ; Multiply accumulated value by 10
-    add eax, edx                      ; Add the numeric value to the result
-    inc ecx                           ; Move to the next character
+    sub dl, '0'                       ; Конвертируем ASCII в число
+    imul eax, eax, 10                 ; Умножаем EAX на 10
+    add eax, edx                      ; Добавляем число к результату
+    inc ecx                           ; Переходим к следующему символу
     jmp convertLoop
 doneConversion:
     ret
 stringToInt ENDP
 
-; === Subroutine: Convert Integer to String with Decimal Point ===
-intToString PROC
+floatToString PROC
+    ; === Конвертация дробного числа в строку
     ; Вход:
     ;   EAX = Целая часть
     ;   EBX = Дробная часть
     ;   ESI = Флаг отрицательного числа (0/1)
+    ;   EDI = Ссылка на буфер для строки
+    ; Используется:
+    ;   ECX = Счетчик символов
+    ;   EDX = Хранение остатка
 
-    push edi                          ; Сохранить регистры
-    push eax
-    push ebx
-    push ecx
-    push edx                          ; Сохранить дробную часть
+    push ebx                          ; Сохранить дробную часть
 
     xor ecx, ecx                      ; Счётчик символов
 
     ; === Обработка целой части числа ===
-    test esi, esi                  ; Проверить, отрицательное ли число
-    jz positiveNumber                ; Если положительное, перейти к обработке
-    mov byte ptr [edi], '-'           ; Добавить знак "-"
-    inc edi                           ; Сдвинуть указатель буфера
+    test esi, esi                   ; Проверить, отрицательное ли число
+    jz positiveNumber               ; Если положительное, перейти к обработке
+    mov byte ptr [edi], '-'         ; Добавить знак "-"
+    inc edi                         ; Сдвинуть указатель буфера
 
 positiveNumber:
     xor edx, edx                      ; Очистить остаток
@@ -256,9 +269,9 @@ convertIntegerLoop:
     test eax, eax                     ; Проверить, деление завершено
     jnz convertIntegerLoop            ; Продолжать, если частное не 0
 
-    ; Запись целой части в буфер
+; Запись целой части в буфер
 writeIntegerChars:
-    pop edx                           ; Извлечь символ из стека
+    pop ebx                           ; Извлечь символ из стека
     mov byte ptr [edi], dl            ; Записать символ в буфер
     inc edi                           ; Сдвинуть указатель
     loop writeIntegerChars            ; Повторить для всех символов
@@ -293,76 +306,59 @@ writeFractionChars:
 endFraction:
     ; === Завершение строки ===
     mov byte ptr [edi], 0             ; Добавить null-терминатор
-
-    ; === Восстановить регистры ===
-    pop ecx
-    pop ebx
-    pop eax
-    pop edi
-
     ret
-intToString ENDP
+floatToString ENDP
 
-divideWithFraction PROC
+divideIntNumbers PROC
+    ; === Процедура для деления одного целого числа на друго с получением десятичного числа
     ; Вход:
-    ;   EAX - делимое
-    ;   EBX - делитель
+    ;   EAX = делимое
+    ;   EBX = делитель
     ; Выход:
-    ;   Целая часть в [result]
-    ;   Десятичная часть в [fraction]
+    ;   EDI = Целая часть
+    ;   ESI = Десятичная часть
+    ; Используется:
+    ;   EDX = Для вренного хранения остатка от деления
+    ;   ECX = Для длительного хранения остатка от деления
 
-    push eax                    ; Сохранить регистры
-    push ebx
-    push ecx
-    push edx
-    push esi
-
+    xor esi, esi                ; Инициализировать десятичную часть
     ; Выполнить целочисленное деление
     xor edx, edx                ; Очистить остаток (EDX)
     div ebx                     ; Деление EAX / EBX (целая часть в EAX, остаток в EDX)
 
-    mov [integer], eax           ; Сохранить целую часть
-    mov esi, edx                ; Сохранить остаток
+    mov edi, eax                ; Сохранить целую часть
 
     ; Проверить, есть ли остаток
-    test esi, esi               ; Проверить остаток
-    jz endDivide                ; Если остатка нет, завершить
+    test edx, edx               ; Проверить остаток
+    jz done                     ; Если остатка нет, завершить
+    mov eax, edx                ; Сохранить остаток
 
     ; Обработка остатка
-    mov ecx, 10                 ; Максимальное количество знаков после запятой
-    xor eax, eax                ; Очистить EAX
-    mov [fraction], eax         ; Инициализировать десятичную часть
+    mov ecx, 10                 ; Максимальное количество знаков после запятой             
 fractionLoop:
-    mov eax, esi                ; Перенести остаток в EAX
     imul eax, 10                ; Умножить остаток на 10
     xor edx, edx                ; Очистить регистр остатка
     div ebx                     ; Выполнить деление (EAX / EBX)
 
     ; Добавить текущий разряд в десятичную часть
-    mov esi, [fraction]         ; Текущая десятичная часть
-    imul esi, 10                ; Увеличить разрядность
-    add esi, eax                ; Добавить новый разряд
-    mov [fraction], esi         ; Сохранить десятичную часть
+    mov ecx, esi          ; Текущая десятичная часть
+    imul ecx, 10            ; Увеличить разрядность
+    add ecx, eax            ; Добавить новый разряд
+    mov esi, ecx          ; Сохранить десятичную часть
 
     ; Проверить новый остаток
     test edx, edx               ; Если остаток стал нулевым
-    jz endFraction              ; Прекратить обработку
+    jz done                     ; Прекратить обработку
 
-    mov esi, edx                ; Новый остаток
+    mov eax, edx                ; Новый остаток
     loop fractionLoop           ; Повторить цикл
 
-endFraction:
-endDivide:
-    pop esi                     ; Восстановить регистры
-    pop edx
-    pop ecx
-    pop ebx
-    pop eax
+done:
     ret
-divideWithFraction ENDP
+divideIntNumbers ENDP
 
-subtractNumbers PROC
-    ; Процедура для вычитания одного дробного числа из другого
+subtractFloatNumbers PROC
+    ; === Процедура для вычитания одного дробного числа из другого ===
     ; Вход:
     ;   EAX = целая часть первого числа
     ;   EBX = дробная часть первого числа
@@ -414,10 +410,10 @@ noBorrow:
     sub ebx, edx
     ret
 
-subtractNumbers ENDP
+subtractFloatNumbers ENDP
 
 getBorrowAdd PROC
-    ; Процедура для получения числа, которое прибавится к меньшей части при вычитании
+    ; === Процедура для получения числа, которое прибавится к меньшей части при вычитании ===
     ; Например, если из 0 вычитается 17, то к 0 прибавляется 100 (10 ^ (число символов в 17))
     ; Вход:
     ;   EAX = Число X, символы которого нужно посчитать
